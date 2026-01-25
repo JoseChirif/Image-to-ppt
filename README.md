@@ -140,7 +140,7 @@ It covers the **📑 execution**, which can be found below in this README.
 </code></pre>
     </li><br>
 
-  <li>Then a "dist" folder will be created in the project's directory, containing a "0 rename.exe" folder. Inside it, you will find the .exe file and the "_internal" folder.
+  <li>Then a "dist" folder will be created in the project's directory, containing a .exe file.
     <img src="https://github.com/user-attachments/assets/f4c9db5c-5dea-4e38-8097-3fbe1834eb85" alt="dist folder" loading="lazy">
   </li>
 
