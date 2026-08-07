@@ -11,19 +11,22 @@ def build_exe():
         "--clean",
         "--noupx",
         "--log-level=DEBUG",
+        "--collect-all", "ttkbootstrap",
         
         # Adding project's folders
         "--add-data", "assets/*;assets",
         "--add-data", "config/*;config",
         "--add-data", "functions/*;functions",
         "--add-data", "src/*;src",
+        "--add-data", "ui/*;ui",
+        "--add-data", "utils/*;utils",
         "--add-data", "LICENSE;.",
         "--add-data", "README.md;.",
 
         # Adding specific files from "assets/example pictures"
-        "--add-data", "assets/example pictures/Presentation - Pictures center ppt.jpg;assets/example pictures",
-        "--add-data", "assets/example pictures/Presentation - pictures covering panoramic slides.jpg;assets/example pictures",
-        "--add-data", "assets/example pictures/Presentation - pictures in panoramic slides.jpg;assets/example pictures",
+        "--add-data", "assets/example pictures/Presentation - Pictures center ppt.JPG;assets/example pictures",
+        "--add-data", "assets/example pictures/Presentation - pictures covering panoramic slides.JPG;assets/example pictures",
+        "--add-data", "assets/example pictures/Presentation - pictures in panoramic slides.JPG;assets/example pictures",
         
         # Specify the hooks directory
         "--hidden-import", "pptx",
@@ -32,7 +35,7 @@ def build_exe():
         "--hidden-import", "pptx.enum",
 
         # Icon, name, and main script
-        "--icon", "assets/icon.ico",
+        "--icon", "assets/Icon.ico",
         "--name", "Pictures to slides.exe",
 
         # Main script

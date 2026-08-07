@@ -1,286 +1,425 @@
-#Import libraries
-import tkinter as tk
-import sys
+from __future__ import annotations
+
 import os
 import subprocess
-from PIL import Image, ImageTk, ImageOps
+import sys
+from collections.abc import Callable
+from pathlib import Path
 
-# go to the parent directory if you are running this script directly (uncomment the following lines)
-# import sys
-# sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import ttkbootstrap as ttk
+from PIL import Image, ImageOps, ImageTk
+from ttkbootstrap import Messagebox, register_style
 
-from functions.functions import run_picture_center, run_picture_in_panoramic_slide, run_picture_covering_panoramic_slide, open_web_page, adjust_text
-from config.config import icon_picture_png, icon_picture_ico, logo_github_png, pictures_center, pictures_in_pan_slide, pictures_covering_slide, __version__
-
-current_version = f'v{__version__}'
-
-# Variables
-project_title = "Pictures to Power Point"
-text_button_1 = "Picture with border in the center of the slide"
-picture_button_1 = pictures_center
-text_button_2 = "Picture in panoramic slide"
-picture_button_2 = pictures_in_pan_slide
-text_button_3 = "Picture covering panoramic slice"
-picture_button_3 = pictures_covering_slide
-instructions_title = "Instructions:"
-instructions_content = "1. Move the .exe file in the folder where are located. \n2. Execute the program. \n3. Choose your option."
-notes_title = "Notes:"
-notes_content = f"-The 1st option ({text_button_1}) centers the image to the slide with an heigh of 17.43 cm and add a 0.75pt black border to the image.\n- If you choose the 3rd option ({text_button_3}), the picture will be croped to get the slide aspect ratio."
-
-
-# Styles
-background = '#F0F0F0'
-button_padding = 2
-button_spacing = 10
-button_border_width = 2
-button_color_border = "black"
-padding_text_button_x = 20  # Horizontal padding between text and button border
-padding_text_button_y = 2  # Vertical padding between text and button border
-window_size = "650x650"   # Custom window size (width x height)
-margin = 30        # left margin to align texts
-minimum_window_width = 300
-link_color = "#0770E0"
+from functions.functions import (
+    open_web_page,
+    run_picture_center,
+    run_picture_covering_panoramic_slide,
+    run_picture_in_panoramic_slide,
+)
+from config.config import (
+    __version__,
+    icon_picture_ico,
+    icon_picture_png,
+    logo_github_png,
+    pictures_center,
+    pictures_covering_slide,
+    pictures_in_pan_slide,
+)
 
 
-    
-    
-def create_button_with_image(parent_frame, path_to_picture, text_button, command):
-    """
-    Creates a frame with an image on the left and a button on the right.
+# -----------------------------------------------------------------------------
+# Application configuration
+# -----------------------------------------------------------------------------
+THEME_NAME = "bootstrap-light"  # Current light ttkbootstrap theme
+WINDOW_SIZE = (820, 900)
+MINIMUM_WINDOW_SIZE = (720, 610)
 
-    Args:
-        parent_frame (tk.Frame): The frame where the button with the image will be added.
-        path_to_picture (str): Path to the image file.
-        text_button (str): Text to display on the button.
-        command (function): Function to execute when the button is clicked.
-    """
-    # Create the container frame
-    frame_button = tk.Frame(parent_frame, bg=background)
-    frame_button.pack(fill="x", pady=(button_padding, button_spacing), padx=margin + 10)
-    
-    # Load and process the image
-    img = Image.open(path_to_picture)
-    aspect_ratio = img.width / img.height
-    new_height = 50  # Button height
-    new_width = int(new_height * aspect_ratio)
-    img_resized = img.resize((new_width, new_height), Image.LANCZOS)
-    img_bordered = ImageOps.expand(img_resized, border=1, fill="black")
-    img_tk = ImageTk.PhotoImage(img_bordered)
-    
-    # Create the image label
-    label_img = tk.Label(frame_button, image=img_tk, bg=background, cursor="hand2")
-    label_img.image = img_tk  # Keep reference to prevent garbage collection
-    label_img.pack(side="left")
-    
-    # Bind click event to the image
-    label_img.bind("<Button-1>", lambda event: command())
-    
-    # Create the button
-    btn_option = tk.Button(
-        frame_button,
-        text=text_button,
-        font=("Arial", 10),
-        command=command,
-        borderwidth=button_border_width,
-        highlightbackground=button_color_border,
+PROJECT_TITLE = "Pictures to PowerPoint"
+PROJECT_SUBTITLE = "Turn the images in the current folder into a presentation."
+CURRENT_VERSION = f"v{__version__}"
+
+REPOSITORY_URLS = (
+    "https://github.com/JoseChirif/Pictures-to-slides",
+    "https://github.com/JoseChirif?tab=repositories",
+    "https://github.com/JoseChirif",
+)
+
+COLORS = {
+    "app_bg": "#F5F7FA",
+    "surface": "#FFFFFF",
+    "border": "#D9E1EA",
+    "text": "#172033",
+    "muted": "#667085",
+    "subtle": "#F0F4F8",
+}
+
+
+# -----------------------------------------------------------------------------
+# Image helpers
+# -----------------------------------------------------------------------------
+def load_photo_image(
+    image_path: str | os.PathLike[str],
+    size: tuple[int, int],
+    *,
+    contain: bool = False,
+    border: int = 0,
+) -> ImageTk.PhotoImage:
+    """Load an image and return a Tk-compatible image with consistent sizing."""
+    with Image.open(image_path) as source:
+        image = source.convert("RGBA")
+
+        if contain:
+            image.thumbnail((size[0] - 12, size[1] - 12), Image.Resampling.LANCZOS)
+            canvas = Image.new("RGBA", size, "white")
+            x = (size[0] - image.width) // 2
+            y = (size[1] - image.height) // 2
+            canvas.alpha_composite(image, (x, y))
+            image = canvas
+        else:
+            image = ImageOps.contain(image, size, Image.Resampling.LANCZOS)
+
+        if border:
+            image = ImageOps.expand(image, border=border, fill=COLORS["border"])
+
+        return ImageTk.PhotoImage(image)
+
+
+# -----------------------------------------------------------------------------
+# Reusable interface components
+# -----------------------------------------------------------------------------
+def create_layout_card(
+    parent: ttk.Frame,
+    *,
+    preview_path: str,
+    title: str,
+    description: str,
+    command: Callable[[], None],
+) -> ttk.Frame:
+    """Create a modern, horizontally aligned layout option card."""
+    border_frame = ttk.Frame(parent, style="CardBorder.TFrame")
+    border_frame.pack(fill="x", pady=6)
+
+    card = ttk.Frame(border_frame, style="Card.TFrame", padding=(14, 12))
+    card.pack(fill="x", padx=1, pady=1)
+    card.columnconfigure(1, weight=1)
+
+    preview = load_photo_image(preview_path, (150, 96), contain=True)
+    preview_label = ttk.Label(
+        card,
+        image=preview,
+        style="Card.TLabel",
         cursor="hand2",
     )
-    btn_option.pack(side="left", expand=True, fill="both")
-        
-    return btn_option
+    preview_label.image = preview
+    preview_label.grid(row=0, column=0, rowspan=2, sticky="w", padx=(0, 16))
+
+    title_label = ttk.Label(
+        card,
+        text=title,
+        style="CardTitle.TLabel",
+        cursor="hand2",
+    )
+    title_label.grid(row=0, column=1, sticky="sw", pady=(2, 3))
+
+    description_label = ttk.Label(
+        card,
+        text=description,
+        style="CardDescription.TLabel",
+        cursor="hand2",
+        wraplength=330,
+    )
+    description_label.grid(row=1, column=1, sticky="nw", padx=(0, 14))
+
+    action_button = ttk.Button(
+        card,
+        text="Use this layout",
+        command=command,
+        bootstyle="primary outline",
+        cursor="hand2",
+        width=16,
+    )
+    action_button.grid(row=0, column=2, rowspan=2, sticky="e", padx=(8, 0))
+
+    clickable_widgets = (border_frame, card, preview_label, title_label, description_label)
+    for widget in clickable_widgets:
+        widget.bind("<Button-1>", lambda _event, callback=command: callback())
+        widget.configure(cursor="hand2")
+
+    return border_frame
+
+
+def get_license_path() -> Path:
+    """Return the absolute path to the LICENSE file."""
+    return Path(__file__).resolve().parent.parent / "LICENSE"
+
+
+def open_license(parent: ttk.App) -> None:
+    """Open the license with the operating system's default text viewer."""
+    license_path = get_license_path()
+
+    if not license_path.exists():
+        Messagebox.show_error(
+            f"The license file was not found:\n{license_path}",
+            "License not found",
+            parent=parent,
+        )
+        return
+
+    try:
+        if sys.platform.startswith("win"):
+            os.startfile(license_path)  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(license_path)])
+        else:
+            subprocess.Popen(["xdg-open", str(license_path)])
+    except OSError as exc:
+        Messagebox.show_error(
+            f"The license could not be opened.\n\n{exc}",
+            "Unable to open license",
+            parent=parent,
+        )
 
 
 
+# -----------------------------------------------------------------------------
+# Main window
+# -----------------------------------------------------------------------------
+def main_menu() -> None:
+    """Display the application's main menu."""
+    window = ttk.App(
+        title=PROJECT_TITLE,
+        theme=THEME_NAME,
+        size=WINDOW_SIZE,
+        minsize=MINIMUM_WINDOW_SIZE,
+        iconphoto=None,
+    )
+    window.configure(background=COLORS["app_bg"])
+    window.place_window_center()
 
-    
-# Function to create the main menu
-def main_menu():
-    """
-    Displays the main menu for the project, allowing the user to navigate between different functionalities. 
-    The function customizes the content and interface based on the provided language parameter.
+    try:
+        window.iconbitmap(icon_picture_ico)
+    except Exception:
+        # The ICO format is not supported by every operating system.
+        pass
 
-    This function is located in src/main_menu.py
-
-    Arg:
-        language (str): The language code (e.g., 'en', 'es') passed to customize the language-specific content and labels on the menu.
-
-    Returns:
-        None: This function does not return any value. It opens the main menu interface and handles user interaction for navigation.
-    """
-    window = tk.Tk()
-    window.title(project_title)
-    
-    # Set the minimum width
-    window.wm_minsize(minimum_window_width, 0)
-    
-    # Set window size and background size
-    window.geometry(window_size)
-    window.configure(bg=background)
-
-    # Make the window come to the foreground
     window.attributes("-topmost", True)
-    window.after(1, lambda: window.attributes("-topmost", False))  # Return to normal state after opening
-    
-    # Add the icon to the window
-    window.iconbitmap(icon_picture_ico)
-    
-    # Close the whole program when I close the menu
-    window.protocol("WM_DELETE_WINDOW", lambda: (window.destroy(), sys.exit()))
-    
-    
+    window.after(100, lambda: window.attributes("-topmost", False))
+    window.protocol("WM_DELETE_WINDOW", window.destroy)
 
+    style = ttk.Style()
+    for custom_style in (
+        "App.TFrame",
+        "CardBorder.TFrame",
+        "Card.TFrame",
+        "Card.TLabel",
+        "HeaderTitle.TLabel",
+        "HeaderSubtitle.TLabel",
+        "SectionTitle.TLabel",
+        "SectionDescription.TLabel",
+        "CardTitle.TLabel",
+        "CardDescription.TLabel",
+        "Info.TFrame",
+        "InfoTitle.TLabel",
+        "InfoText.TLabel",
+        "Footer.TLabel",
+    ):
+        register_style(style, custom_style)
 
-    
-    
-    
-    ## TITLE
-    empty_space = tk.Frame(window, height=20)  # An empty frame
-    empty_space.pack()
-    # Create a frame for the project_title and the icon_picture_png image
-    frame_project_title = tk.Frame(window, bg=background)
-    frame_project_title.pack(pady=10, padx=margin, fill='x')
-
-    # Load the icon_picture_png
-    img = Image.open(icon_picture_png)
-    img = img.resize((50, 50), Image.LANCZOS)  # Sets the icon size
-    icon_picture_png_tk = ImageTk.PhotoImage(img)
-    
-
-
-    # Label for the icon_picture_png
-    lbl_icon_picture_png = tk.Label(frame_project_title, image=icon_picture_png_tk, bg=background)
-    lbl_icon_picture_png.image = icon_picture_png_tk  # Keep a reference to prevent deletion
-    lbl_icon_picture_png.pack(side=tk.LEFT)
-
-    # project_title
-    lbl_project_title = tk.Label(frame_project_title, text=project_title, font=("Arial", 14, "bold"), bg=background)
-    lbl_project_title.pack(fill='x', expand=True, padx=10)
-    
-
-    
-    ## OPTIONS
-    frame_options_and_notes = tk.Frame(window, bg=background)
-    frame_options_and_notes.pack(expand=True, fill='both', pady=5)
-    
-    # Select an option text
-    lbl_menu = tk.Label(frame_options_and_notes, text="Select an option:", font=("Arial", 10, "bold"), bg=background, anchor="w")
-    lbl_menu.pack(expand=True, fill='both', pady=5, padx=margin, anchor="w")
-
-
-    ## Buttons
-    button_nr_1 = create_button_with_image(frame_options_and_notes, picture_button_1, text_button_1, run_picture_center)
-    button_nr_2 = create_button_with_image(frame_options_and_notes, picture_button_2, text_button_2, run_picture_in_panoramic_slide)
-    button_nr_3 = create_button_with_image(frame_options_and_notes, picture_button_3, text_button_3, run_picture_covering_panoramic_slide)
-    
-   
-    
-
-    # Instructions title text
-    lbl_project_title_instructions_content = tk.Label(frame_options_and_notes, text=instructions_title, font=("Arial", 10, "bold"), bg=background, anchor="w")
-    lbl_project_title_instructions_content.pack(expand=True, fill='both', pady=0, padx=margin, anchor="n")
-
-    # instructions content
-    lbl_instructions_content = tk.Label(frame_options_and_notes, text=instructions_content, font=("Arial", 10), justify="left", bg=background, anchor="n")
-    lbl_instructions_content.pack(expand=True, fill='both', padx=margin)
-
-
-    # Notes title text
-    lbl_project_title_notes_content = tk.Label(frame_options_and_notes, text=notes_title, font=("Arial", 10, "bold"), bg=background, anchor="w")
-    lbl_project_title_notes_content.pack(expand=True, fill='both', padx=margin, anchor="n")
-
-    # notes content
-    lbl_notes_content = tk.Label(frame_options_and_notes, text=notes_content, font=("Arial", 10), 
-                                justify="left", bg=background, anchor="n")
-    lbl_notes_content.pack(expand=True, fill='both', padx=margin, pady=(0, 0))
-
-
-
-
-
-    ## REPOSITORY
-    # Create a frame to align the icon_picture_png and the license
-    frame_github = tk.Frame(window, bg=background)
-    frame_github.place(relx=1.0, rely=0.0, anchor="se", x=-margin + 15, y=38)
-
-    # Github text
-    lbl_github_text = tk.Label(frame_github, text="GitHub", font=("Bell MT", 14), bg=background, fg=link_color, cursor="hand2") 
-    lbl_github_text.pack(side=tk.LEFT, padx=(100, 0), pady=(5, 0))
-    
-    # Repository link (with the text)
-    lbl_github_text.bind("<Button-1>", lambda e: open_web_page('https://github.com/JoseChirif/Pictures-to-slides','https://github.com/JoseChirif?tab=repositories', 'https://github.com/JoseChirif'))
-    
-    #PNG    
-    # Load Github icon
-    img_logo_github = Image.open(logo_github_png)
-    img_logo_github = img_logo_github.resize((30, 30), Image.LANCZOS)
-    icon_picture_png_Link_repositorio_tk = ImageTk.PhotoImage(img_logo_github)
-
-    # Label for the icon_picture_png of Link_repository
-    lbl_github_logo = tk.Label(frame_github, image=icon_picture_png_Link_repositorio_tk, bg=background, cursor="hand2")  # Hand cursor
-    lbl_github_logo.image = icon_picture_png_Link_repositorio_tk  
-    lbl_github_logo.pack(side=tk.LEFT, padx=(0, 10))  # Add padding on the right side
-
-    # Repository link (with the icon)
-    lbl_github_logo.bind("<Button-1>", lambda e: open_web_page('https://github.com/JoseChirif/Pictures-to-slides','https://github.com/JoseChirif?tab=repositories', 'https://github.com/JoseChirif'))
-    
-    
+    style.configure("App.TFrame", background=COLORS["app_bg"])
+    style.configure("CardBorder.TFrame", background=COLORS["border"])
+    style.configure("Card.TFrame", background=COLORS["surface"])
+    style.configure("Card.TLabel", background=COLORS["surface"])
+    style.configure(
+        "HeaderTitle.TLabel",
+        background=COLORS["app_bg"],
+        foreground=COLORS["text"],
+        font=("Segoe UI Semibold", 20),
+    )
+    style.configure(
+        "HeaderSubtitle.TLabel",
+        background=COLORS["app_bg"],
+        foreground=COLORS["muted"],
+        font=("Segoe UI", 10),
+    )
+    style.configure(
+        "SectionTitle.TLabel",
+        background=COLORS["app_bg"],
+        foreground=COLORS["text"],
+        font=("Segoe UI Semibold", 13),
+    )
+    style.configure(
+        "SectionDescription.TLabel",
+        background=COLORS["app_bg"],
+        foreground=COLORS["muted"],
+        font=("Segoe UI", 9),
+    )
+    style.configure(
+        "CardTitle.TLabel",
+        background=COLORS["surface"],
+        foreground=COLORS["text"],
+        font=("Segoe UI Semibold", 11),
+    )
+    style.configure(
+        "CardDescription.TLabel",
+        background=COLORS["surface"],
+        foreground=COLORS["muted"],
+        font=("Segoe UI", 9),
+    )
+    style.configure("Info.TFrame", background=COLORS["subtle"])
+    style.configure(
+        "InfoTitle.TLabel",
+        background=COLORS["subtle"],
+        foreground=COLORS["text"],
+        font=("Segoe UI Semibold", 10),
+    )
+    style.configure(
+        "InfoText.TLabel",
+        background=COLORS["subtle"],
+        foreground=COLORS["muted"],
+        font=("Segoe UI", 9),
+    )
+    style.configure(
+        "Footer.TLabel",
+        background=COLORS["app_bg"],
+        foreground=COLORS["muted"],
+        font=("Segoe UI", 8),
+    )
 
 
 
-    ## LICENSE
-    #frame_github = tk.Frame(window, bg=background)
-    #frame_github.place(relx=1.0, rely=1.0, anchor="se", x=-10, y=-5)
-    
-    def get_license_route():
-        """
-        Returns the absolute path to the LICENSE.txt file located in the project's parent directory.
+    app = ttk.Frame(window, style="App.TFrame", padding=(28, 22, 28, 16))
+    app.pack(fill="both", expand=True)
 
-        This function is located in src/main_menu.py
+    # Header: application icon remains deliberately aligned to the left.
+    header = ttk.Frame(app, style="App.TFrame")
+    header.pack(fill="x")
+    header.columnconfigure(1, weight=1)
 
-        Returns:
-            str: The absolute path to LICENSE.txt, allowing other parts of the application to access the license file regardless of the current working directory.
-        """
-        return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'LICENSE'))
-        
-    def open_license():
-        """
-        Opens the LICENSE file in Notepad, regardless of its extension.
-        """
-        license_path = get_license_route()
-        try:
-            subprocess.run(["notepad", license_path], check=True)
-        except FileNotFoundError:
-            print("Notepad not found. Please ensure it is installed.")
-        except Exception as e:
-            print(f"An error occurred while trying to open the license file: {e}")
+    app_icon = load_photo_image(icon_picture_png, (48, 48))
+    app_icon_label = ttk.Label(header, image=app_icon, style="HeaderSubtitle.TLabel")
+    app_icon_label.image = app_icon
+    app_icon_label.grid(row=0, column=0, rowspan=2, sticky="w", padx=(0, 14))
 
+    ttk.Label(header, text=PROJECT_TITLE, style="HeaderTitle.TLabel").grid(
+        row=0,
+        column=1,
+        sticky="sw",
+    )
+    ttk.Label(header, text=PROJECT_SUBTITLE, style="HeaderSubtitle.TLabel").grid(
+        row=1,
+        column=1,
+        sticky="nw",
+        pady=(2, 0),
+    )
 
-    # Show "MIT License" 
-    lbl_license = tk.Label(window, text="MIT License", font=("Arial", 9), fg=link_color, cursor="hand2")    
-    lbl_license.place(relx=1.0, rely=1.0, anchor="se", x=-margin, y=-5)
-    # Llamar a open_license al hacer clic
-    lbl_license.bind("<Button-1>", lambda e: open_license())
+    github_icon = load_photo_image(logo_github_png, (23, 23))
+    github_button = ttk.Button(
+        header,
+        text="GitHub",
+        image=github_icon,
+        compound="left",
+        command=lambda: open_web_page(*REPOSITORY_URLS),
+        bootstyle="primary link",
+        cursor="hand2",
+        padding=(8, 6),
+    )
+    github_button.image = github_icon
+    github_button.grid(row=0, column=2, rowspan=2, sticky="e")
 
+    ttk.Separator(app, bootstyle="secondary").pack(fill="x", pady=(18, 20))
 
-    ## Version
-    lbl_version = tk.Label(window, text=current_version, font=("Arial", 9), fg="black")    
-    lbl_version.place(relx=1.0, rely=1.0, anchor="se", x=-margin, y=-25)
+    # Layout options.
+    ttk.Label(app, text="Choose a slide layout", style="SectionTitle.TLabel").pack(
+        anchor="w"
+    )
+    ttk.Label(
+        app,
+        text="Select how each image should be positioned in the generated presentation.",
+        style="SectionDescription.TLabel",
+    ).pack(anchor="w", pady=(3, 10))
 
- 
+    cards_container = ttk.Frame(app, style="App.TFrame")
+    cards_container.pack(fill="x")
 
+    create_layout_card(
+        cards_container,
+        preview_path=pictures_center,
+        title="Centered with border",
+        description=(
+            "Keeps the complete image visible, centers it at 17.43 cm high, "
+            "and adds a thin black border."
+        ),
+        command=run_picture_center,
+    )
+    create_layout_card(
+        cards_container,
+        preview_path=pictures_in_pan_slide,
+        title="Fit to widescreen slide",
+        description="Fits the complete image inside a 16:9 slide without cropping it.",
+        command=run_picture_in_panoramic_slide,
+    )
+    create_layout_card(
+        cards_container,
+        preview_path=pictures_covering_slide,
+        title="Fill widescreen slide",
+        description=(
+            "Fills the entire 16:9 slide and crops excess areas when the image "
+            "aspect ratio is different."
+        ),
+        command=run_picture_covering_panoramic_slide,
+    )
 
-    
-    ## FINAL SETTINGS
-    window.bind("<Configure>", lambda event: adjust_text(event, lbl_project_title, lbl_menu, lbl_project_title_instructions_content, button_nr_1, button_nr_2, button_nr_3,  lbl_instructions_content, lbl_project_title_notes_content, lbl_notes_content, margin=20))
-    
+    # Compact instructions replace the large instruction and notes blocks.
+    info_border = ttk.Frame(app, style="CardBorder.TFrame")
+    info_border.pack(fill="x", pady=(14, 0))
+
+    info = ttk.Frame(info_border, padding=(14, 11), style="Info.TFrame")
+    info.pack(fill="x", padx=1, pady=1)
+    ttk.Label(info, text="Before you start", style="InfoTitle.TLabel").pack(anchor="w")
+    info_text = ttk.Label(
+        info,
+        text=(
+            "Place the executable in the folder that contains the images, run the "
+            "program, and choose one of the three layouts above."
+        ),
+        style="InfoText.TLabel",
+        wraplength=690,
+        justify="left",
+    )
+    info_text.pack(anchor="w", pady=(3, 0))
+
+    # Footer.
+    footer = ttk.Frame(app, style="App.TFrame")
+    footer.pack(side="bottom", fill="x", pady=(14, 0))
+    footer.columnconfigure(1, weight=1)
+
+    license_button = ttk.Button(
+        footer,
+        text="MIT License",
+        command=lambda: open_license(window),
+        bootstyle="primary link",
+        cursor="hand2",
+        padding=0,
+    )
+    license_button.grid(row=0, column=0, sticky="w")
+
+    ttk.Label(footer, text="Pictures to PowerPoint", style="Footer.TLabel").grid(
+        row=0,
+        column=1,
+    )
+    ttk.Label(footer, text=CURRENT_VERSION, style="Footer.TLabel").grid(
+        row=0,
+        column=2,
+        sticky="e",
+    )
+
+    def update_wraplength(event: object) -> None:
+        width = max(window.winfo_width() - 130, 420)
+        info_text.configure(wraplength=width)
+
+    window.bind("<Configure>", update_wraplength)
     window.mainloop()
 
 
-
-
-
-    
-    
-# Call main_menu
 if __name__ == "__main__":
     main_menu()

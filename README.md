@@ -121,10 +121,13 @@ It covers the **📑 execution**, which can be found below in this README.
   <ol>
     <li>Run: <pre><code>python build_exe.py</code></pre>
       or Run: <pre><code>pyinstaller --onefile --windowed --clean --noupx `
+    --collect-all ttkbootstrap `
     --add-data "assets/*;assets" `
     --add-data "config/*;config" `
     --add-data "functions/*;functions" `
     --add-data "src/*;src" `
+    --add-data "ui;ui" `
+    --add-data "utils;utils" `
     --add-data "LICENSE;." `
     --add-data "README.md;." `
     --add-data "assets/example pictures/Presentation - Pictures center ppt.jpg;assets/example pictures" `
@@ -161,10 +164,13 @@ It covers the **📑 execution**, which can be found below in this README.
 
   <ol>
     <li>Run: <pre><code>pyinstaller --windowed --clean --noupx `
+    --collect-all ttkbootstrap `
     --add-data "assets/*;assets" `
     --add-data "config/*;config" `
     --add-data "functions/*;functions" `
     --add-data "src/*;src" `
+    --add-data "ui;ui" `
+    --add-data "utils;utils" `
     --add-data "LICENSE;." `
     --add-data "README.md;." `
     --add-data "assets/example pictures/Presentation - Pictures center ppt.jpg;assets/example pictures" `
